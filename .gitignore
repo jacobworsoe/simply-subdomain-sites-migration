@@ -3,4 +3,5 @@ scripts/.env
 __pycache__/
 *.pyc
 .env
-sites/
+sites/*
+!sites/size-monitor/

@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GTM Size Monitor</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="favicon.ico">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --card: #fff;
+      --border: #e2e8f0;
+      --text: #1a202c;
+      --text-muted: #718096;
+      --accent: #3182ce;
+      --accent-hover: #2b6cb0;
+      --green: #38a169;
+      --red: #e53e3e;
+      --yellow: #d69e2e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .container { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    h1 { font-size: 1.5rem; font-weight: 700; }
+    h1 span { color: var(--text-muted); font-weight: 400; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      font-size: .875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-secondary:hover { background: #cbd5e0; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    th {
+      text-align: left;
+      padding: .75rem 1rem;
+      background: #f7fafc;
+      border-bottom: 2px solid var(--border);
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    th:hover { color: var(--text); }
+    th .sort-arrow { margin-left: .25rem; opacity: .4; }
+    th.sorted .sort-arrow { opacity: 1; }
+    td { padding: .65rem 1rem; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f7fafc; }
+    tr.selected td { background: #ebf8ff; }
+    td.name-cell { font-weight: 500; cursor: pointer; color: var(--accent); }
+    td.name-cell:hover { text-decoration: underline; }
+    td.size-cell { font-variant-numeric: tabular-nums; }
+    .size-kb { font-weight: 600; }
+    .change-badge {
+      display: inline-block;
+      padding: .1rem .4rem;
+      border-radius: 4px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .change-up { background: #fed7d7; color: var(--red); }
+    .change-down { background: #c6f6d5; color: var(--green); }
+    .change-flat { background: #fefcbf; color: var(--yellow); }
+
+    .chart-section {
+      margin-top: 1.5rem;
+      display: none;
+    }
+    .chart-section.visible { display: block; }
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .chart-header h2 { font-size: 1.1rem; }
+    .chart-body { padding: 1rem; }
+    canvas { width: 100% !important; max-height: 350px; }
+
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.4);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      width: 90%;
+      max-width: 420px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.15);
+    }
+    .modal h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label {
+      display: block;
+      font-size: .8rem;
+      font-weight: 600;
+      margin-bottom: .3rem;
+      color: var(--text-muted);
+    }
+    .form-group input {
+      width: 100%;
+      padding: .5rem .75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: .875rem;
+    }
+    .form-group input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(49,130,206,.15); }
+    .form-actions { display: flex; gap: .5rem; justify-content: flex-end; }
+    .error-msg { color: var(--red); font-size: .8rem; margin-top: .5rem; }
+
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 640px) {
+      .container { padding: 1rem; }
+      th, td { padding: .5rem .6rem; }
+      .hide-mobile { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>GTM Size Monitor <span>/ daily container tracking</span></h1>
+    <button class="btn btn-primary" onclick="showAddModal()">+ Add monitor</button>
+  </header>
+
+  <div id="monitors-loading" class="card loading">Loading monitors...</div>
+
+  <div id="monitors-table-wrap" class="card" style="display:none">
+    <table>
+      <thead>
+        <tr>
+          <th data-sort="name">Name <span class="sort-arrow">&#9650;</span></th>
+          <th data-sort="size">Latest size <span class="sort-arrow">&#9650;</span></th>
+          <th data-sort="change" class="hide-mobile">30d change <span class="sort-arrow">&#9650;</span></th>
+          <th class="hide-mobile">Last checked</th>
+        </tr>
+      </thead>
+      <tbody id="monitors-body"></tbody>
+    </table>
+  </div>
+
+  <div id="chart-section" class="chart-section card">
+    <div class="chart-header">
+      <h2 id="chart-title">—</h2>
+      <button class="btn btn-secondary" onclick="closeChart()">Close</button>
+    </div>
+    <div class="chart-body">
+      <canvas id="sizeChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<div id="add-modal" class="modal-overlay">
+  <div class="modal">
+    <h2>Add new monitor</h2>
+    <div class="form-group">
+      <label for="add-name">Name</label>
+      <input id="add-name" type="text" placeholder="e.g. ECCO headless">
+    </div>
+    <div class="form-group">
+      <label for="add-url">GTM container URL</label>
+      <input id="add-url" type="url" placeholder="https://www.googletagmanager.com/gtm.js?id=GTM-XXXXX">
+    </div>
+    <div id="add-error" class="error-msg" style="display:none"></div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="hideAddModal()">Cancel</button>
+      <button class="btn btn-primary" id="add-submit" onclick="submitAdd()">Add</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = 'https://europe-west1-python-api-246309.cloudfunctions.net';
+const API_DATA = `${API_BASE}/get-data`;
+const API_ADD  = `${API_BASE}/add-monitor`;
+
+let monitors = [];
+let chart = null;
+let currentSort = { key: 'name', asc: true };
+
+async function init() {
+  try {
+    const resp = await fetch(API_DATA);
+    monitors = await resp.json();
+    // Deduplicate by URL, keeping the earliest created_at
+    const byUrl = {};
+    for (const m of monitors) {
+      if (!byUrl[m.url] || m.created_at < byUrl[m.url].created_at) {
+        byUrl[m.url] = m;
+      }
+    }
+    monitors = Object.values(byUrl);
+    renderTable();
+  } catch (e) {
+    document.getElementById('monitors-loading').textContent = 'Failed to load data.';
+  }
+}
+
+function renderTable() {
+  document.getElementById('monitors-loading').style.display = 'none';
+  document.getElementById('monitors-table-wrap').style.display = '';
+
+  sortMonitors();
+  const tbody = document.getElementById('monitors-body');
+  tbody.innerHTML = monitors.map(m => {
+    const sizeKB = m.latest_size_bytes != null ? (m.latest_size_bytes / 1024).toFixed(0) : '—';
+    const lastDate = m.latest_measured_at ? new Date(m.latest_measured_at).toLocaleDateString('da-DK') : '—';
+    return `<tr data-url="${esc(m.url)}">
+      <td class="name-cell" onclick="selectMonitor('${esc(m.url)}')">${esc(m.name)}</td>
+      <td class="size-cell"><span class="size-kb">${sizeKB}</span> KB</td>
+      <td class="hide-mobile" id="change-${hashCode(m.url)}">—</td>
+      <td class="hide-mobile">${lastDate}</td>
+    </tr>`;
+  }).join('');
+
+  // Load 30-day change data in background
+  monitors.forEach(m => load30dChange(m));
+}
+
+async function load30dChange(m) {
+  try {
+    const resp = await fetch(`${API_DATA}?url=${encodeURIComponent(m.url)}`);
+    const data = await resp.json();
+    if (data.length < 2) return;
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now - 30 * 86400000);
+    const recent = data.filter(d => new Date(d.measured_at) >= thirtyDaysAgo);
+    if (recent.length < 2) return;
+
+    const oldest = recent[0].size_bytes;
+    const newest = recent[recent.length - 1].size_bytes;
+    const pct = ((newest - oldest) / oldest * 100).toFixed(1);
+
+    const cell = document.getElementById(`change-${hashCode(m.url)}`);
+    if (!cell) return;
+
+    if (Math.abs(pct) < 0.5) {
+      cell.innerHTML = `<span class="change-badge change-flat">~0%</span>`;
+    } else if (pct > 0) {
+      cell.innerHTML = `<span class="change-badge change-up">+${pct}%</span>`;
+    } else {
+      cell.innerHTML = `<span class="change-badge change-down">${pct}%</span>`;
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function selectMonitor(url) {
+  document.querySelectorAll('#monitors-body tr').forEach(tr => {
+    tr.classList.toggle('selected', tr.dataset.url === url);
+  });
+
+  const section = document.getElementById('chart-section');
+  section.classList.add('visible');
+  const m = monitors.find(m => m.url === url);
+  document.getElementById('chart-title').textContent = m ? m.name : url;
+
+  try {
+    const resp = await fetch(`${API_DATA}?url=${encodeURIComponent(url)}`);
+    const data = await resp.json();
+    drawChart(data);
+  } catch (e) {
+    document.getElementById('chart-title').textContent = 'Error loading data';
+  }
+}
+
+function drawChart(data) {
+  const ctx = document.getElementById('sizeChart');
+  if (chart) chart.destroy();
+
+  const labels = data.map(d => {
+    const dt = new Date(d.measured_at);
+    return dt.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' });
+  });
+  const sizes = data.map(d => (d.size_bytes / 1024).toFixed(1));
+
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Size (KB)',
+        data: sizes,
+        borderColor: '#3182ce',
+        backgroundColor: 'rgba(49,130,206,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: data.length > 90 ? 0 : 2,
+        pointHoverRadius: 4,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${Number(ctx.parsed.y).toLocaleString()} KB`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { maxTicksLimit: 12, font: { size: 11 } }
+        },
+        y: {
+          grid: { color: '#e2e8f0' },
+          ticks: {
+            font: { size: 11 },
+            callback: v => `${Number(v).toLocaleString()} KB`
+          }
+        }
+      }
+    }
+  });
+}
+
+function closeChart() {
+  document.getElementById('chart-section').classList.remove('visible');
+  document.querySelectorAll('#monitors-body tr').forEach(tr => tr.classList.remove('selected'));
+  if (chart) { chart.destroy(); chart = null; }
+}
+
+function sortMonitors() {
+  const { key, asc } = currentSort;
+  monitors.sort((a, b) => {
+    let va, vb;
+    if (key === 'name') { va = a.name.toLowerCase(); vb = b.name.toLowerCase(); }
+    else if (key === 'size') { va = a.latest_size_bytes || 0; vb = b.latest_size_bytes || 0; }
+    else { return 0; }
+    if (va < vb) return asc ? -1 : 1;
+    if (va > vb) return asc ? 1 : -1;
+    return 0;
+  });
+}
+
+document.querySelectorAll('th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    if (currentSort.key === key) {
+      currentSort.asc = !currentSort.asc;
+    } else {
+      currentSort = { key, asc: true };
+    }
+    document.querySelectorAll('th').forEach(t => t.classList.remove('sorted'));
+    th.classList.add('sorted');
+    th.querySelector('.sort-arrow').textContent = currentSort.asc ? '\u25B2' : '\u25BC';
+    renderTable();
+  });
+});
+
+function showAddModal() {
+  document.getElementById('add-modal').classList.add('visible');
+  document.getElementById('add-name').value = '';
+  document.getElementById('add-url').value = '';
+  document.getElementById('add-error').style.display = 'none';
+  document.getElementById('add-name').focus();
+}
+function hideAddModal() {
+  document.getElementById('add-modal').classList.remove('visible');
+}
+
+async function submitAdd() {
+  const name = document.getElementById('add-name').value.trim();
+  const url = document.getElementById('add-url').value.trim();
+  const errEl = document.getElementById('add-error');
+  errEl.style.display = 'none';
+
+  if (!name || !url) {
+    errEl.textContent = 'Both fields are required.';
+    errEl.style.display = '';
+    return;
+  }
+
+  const btn = document.getElementById('add-submit');
+  btn.disabled = true;
+  btn.textContent = 'Adding...';
+
+  try {
+    const resp = await fetch(API_ADD, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, url }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) {
+      errEl.textContent = result.error || 'Failed to add.';
+      errEl.style.display = '';
+    } else {
+      hideAddModal();
+      init();
+    }
+  } catch (e) {
+    errEl.textContent = 'Network error.';
+    errEl.style.display = '';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Add';
+  }
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function hashCode(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+init();
+</script>
+</body>
+</html>
