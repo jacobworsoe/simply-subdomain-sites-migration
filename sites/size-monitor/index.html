@@ -101,20 +101,44 @@
     .change-flat { background: #fefcbf; color: var(--yellow); }
 
     .chart-section {
-      margin-top: 1.5rem;
-      display: none;
+      margin-bottom: 1.5rem;
     }
-    .chart-section.visible { display: block; }
     .chart-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding: 1rem;
       border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: .75rem;
     }
     .chart-header h2 { font-size: 1.1rem; }
-    .chart-body { padding: 1rem; }
-    canvas { width: 100% !important; max-height: 350px; }
+    .chart-header select {
+      padding: .45rem .75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: .875rem;
+      background: var(--card);
+      color: var(--text);
+      min-width: 220px;
+      cursor: pointer;
+    }
+    .chart-header select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(49,130,206,.15);
+    }
+    .chart-body { padding: 1rem; position: relative; min-height: 300px; }
+    .chart-body canvas { width: 100% !important; max-height: 350px; }
+    .chart-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: .9rem;
+    }
 
     .modal-overlay {
       display: none;
@@ -174,6 +198,19 @@
     <button class="btn btn-primary" onclick="showAddModal()">+ Add monitor</button>
   </header>
 
+  <div id="chart-section" class="chart-section card">
+    <div class="chart-header">
+      <h2>Size over time</h2>
+      <select id="chart-select" onchange="onChartSelect(this.value)">
+        <option value="">Select a container...</option>
+      </select>
+    </div>
+    <div class="chart-body">
+      <div id="chart-placeholder" class="chart-placeholder">Select a container above to view its size history</div>
+      <canvas id="sizeChart" style="display:none"></canvas>
+    </div>
+  </div>
+
   <div id="monitors-loading" class="card loading">Loading monitors...</div>
 
   <div id="monitors-table-wrap" class="card" style="display:none">
@@ -188,16 +225,6 @@
       </thead>
       <tbody id="monitors-body"></tbody>
     </table>
-  </div>
-
-  <div id="chart-section" class="chart-section card">
-    <div class="chart-header">
-      <h2 id="chart-title">—</h2>
-      <button class="btn btn-secondary" onclick="closeChart()">Close</button>
-    </div>
-    <div class="chart-body">
-      <canvas id="sizeChart"></canvas>
-    </div>
   </div>
 </div>
 
@@ -228,12 +255,12 @@ const API_ADD  = `${API_BASE}/add-monitor`;
 let monitors = [];
 let chart = null;
 let currentSort = { key: 'name', asc: true };
+let measurementsCache = {};
 
 async function init() {
   try {
     const resp = await fetch(API_DATA);
     monitors = await resp.json();
-    // Deduplicate by URL, keeping the earliest created_at
     const byUrl = {};
     for (const m of monitors) {
       if (!byUrl[m.url] || m.created_at < byUrl[m.url].created_at) {
@@ -241,9 +268,23 @@ async function init() {
       }
     }
     monitors = Object.values(byUrl);
+    populateDropdown();
     renderTable();
   } catch (e) {
     document.getElementById('monitors-loading').textContent = 'Failed to load data.';
+  }
+}
+
+function populateDropdown() {
+  const select = document.getElementById('chart-select');
+  const sorted = [...monitors].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+  select.innerHTML = '<option value="">Select a container...</option>' +
+    sorted.map(m => `<option value="${esc(m.url)}">${esc(m.name)}</option>`).join('');
+}
+
+function onChartSelect(url) {
+  if (url) {
+    selectMonitor(url);
   }
 }
 
@@ -270,8 +311,11 @@ function renderTable() {
 
 async function load30dChange(m) {
   try {
-    const resp = await fetch(`${API_DATA}?url=${encodeURIComponent(m.url)}`);
-    const data = await resp.json();
+    if (!measurementsCache[m.url]) {
+      const resp = await fetch(`${API_DATA}?url=${encodeURIComponent(m.url)}`);
+      measurementsCache[m.url] = await resp.json();
+    }
+    const data = measurementsCache[m.url];
     if (data.length < 2) return;
 
     const now = new Date();
@@ -301,17 +345,25 @@ async function selectMonitor(url) {
     tr.classList.toggle('selected', tr.dataset.url === url);
   });
 
-  const section = document.getElementById('chart-section');
-  section.classList.add('visible');
-  const m = monitors.find(m => m.url === url);
-  document.getElementById('chart-title').textContent = m ? m.name : url;
+  const select = document.getElementById('chart-select');
+  if (select.value !== url) select.value = url;
+
+  const canvas = document.getElementById('sizeChart');
+  const placeholder = document.getElementById('chart-placeholder');
+  placeholder.textContent = 'Loading...';
+  placeholder.style.display = '';
+  canvas.style.display = 'none';
 
   try {
-    const resp = await fetch(`${API_DATA}?url=${encodeURIComponent(url)}`);
-    const data = await resp.json();
-    drawChart(data);
+    if (!measurementsCache[url]) {
+      const resp = await fetch(`${API_DATA}?url=${encodeURIComponent(url)}`);
+      measurementsCache[url] = await resp.json();
+    }
+    placeholder.style.display = 'none';
+    canvas.style.display = '';
+    drawChart(measurementsCache[url]);
   } catch (e) {
-    document.getElementById('chart-title').textContent = 'Error loading data';
+    placeholder.textContent = 'Failed to load chart data.';
   }
 }
 
@@ -368,12 +420,6 @@ function drawChart(data) {
       }
     }
   });
-}
-
-function closeChart() {
-  document.getElementById('chart-section').classList.remove('visible');
-  document.querySelectorAll('#monitors-body tr').forEach(tr => tr.classList.remove('selected'));
-  if (chart) { chart.destroy(); chart = null; }
 }
 
 function sortMonitors() {
